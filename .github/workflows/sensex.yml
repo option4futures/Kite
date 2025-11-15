@@ -1,4 +1,4 @@
-name: Sensex Option Chain Updater
+name: Sensex Option Chain Update
 
 on:
   schedule:
