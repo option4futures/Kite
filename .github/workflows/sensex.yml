@@ -2,7 +2,7 @@ name: Sensex Option Chain Update
 
 on:
   schedule:
-    - cron: "*/5 3-10 * * 1-5"   # Every 5 mins, 8:30 AM – 3:30 PM IST
+    - cron: "*/5 3-12 * * 1-5"   # Every 5 mins, 8:30 AM – 3:30 PM IST
   workflow_dispatch:
 
 jobs:
