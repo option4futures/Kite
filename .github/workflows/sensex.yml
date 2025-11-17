@@ -38,5 +38,5 @@ jobs:
           API_KEY: ${{ secrets.API_KEY }}
           ACCESS_TOKEN: ${{ secrets.ACCESS_TOKEN }}
           SHEET_ID: ${{ secrets.SHEET_ID }}
-          GOOGLE_CREDENTIALS_PATH: "service_account.json"
+          GOOGLE_CREDENTIALS_PATH: ${{ github.workspace }}/service_account.json
         run: python fetch_data.py
