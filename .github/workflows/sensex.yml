@@ -1,42 +1,32 @@
-name: Sensex Option Chain Update
+name: SENSEX Option Chain Live Update
 
 on:
   schedule:
-    - cron: "*/5 3-12 * * 1-5"   # Every 5 mins, 8:30 AM – 3:30 PM IST
+    - cron: "*/5 3-12 * * 1-5"     # Every 5 mins from 8:30 AM to 3:30 PM IST
   workflow_dispatch:
 
 jobs:
-  update-sensex:
+  update:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout repo
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup Python
+      - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
       - name: Install dependencies
-        run: pip install kiteconnect gspread oauth2client pytz
-
-      - name: Create Google Credentials File
-        env:
-          GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
         run: |
-          printf "%s" "$GOOGLE_CREDENTIALS" > service_account.json
+          python -m pip install --upgrade pip
+          pip install kiteconnect gspread google-auth pytz
 
-          echo "🔍 Creds file size:"
-          ls -lh service_account.json
-
-          echo "🔍 First lines of creds file:"
-          head -n 5 service_account.json
-
-      - name: Run Script
+      - name: Run SENSEX Option Chain Updater
         env:
           API_KEY: ${{ secrets.API_KEY }}
           ACCESS_TOKEN: ${{ secrets.ACCESS_TOKEN }}
           SHEET_ID: ${{ secrets.SHEET_ID }}
-          GOOGLE_CREDENTIALS_PATH: ${{ github.workspace }}/service_account.json
-        run: python fetch_data.py
+          GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}  # Full JSON string
+        run: |
+          python fetch_data.py
