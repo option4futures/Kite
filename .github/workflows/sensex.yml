@@ -2,12 +2,13 @@ name: Sensex Option Chain Update
 
 on:
   schedule:
-    - cron: "5 8-15 * * 1-5"  # every hour between 9:05 AM–3:59 PM IST (Mon–Fri)
+    - cron: "5 8-15 * * 1-5"   # runs every hour between 9:05–3:59 PM IST (Mon–Fri)
   workflow_dispatch:
 
 jobs:
   update-sensex:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
@@ -20,6 +21,13 @@ jobs:
       - name: Install dependencies
         run: pip install kiteconnect gspread oauth2client pytz
 
+      - name: Create Google Service Account JSON
+        run: |
+          printf '%s' "${{ secrets.GOOGLE_CREDENTIALS }}" > service_account.json
+          echo "Created service_account.json"
+          ls -lh service_account.json
+          head -n 5 service_account.json
+
       - name: Run SENSEX Option Chain Script
         env:
           API_KEY: ${{ secrets.API_KEY }}
@@ -27,5 +35,4 @@ jobs:
           SHEET_ID: ${{ secrets.SHEET_ID }}
           GOOGLE_CREDENTIALS_PATH: "service_account.json"
         run: |
-          echo "${{ secrets.GOOGLE_CREDENTIALS_JSON }}" > service_account.json
           python fetch_data.py
