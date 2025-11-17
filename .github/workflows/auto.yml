@@ -1,0 +1,34 @@
+name: Live Option Chain Update
+
+on:
+  schedule:
+    - cron: "*/5 4-10 * * 1-5"   # Every 5 min, 9:15 AM to 3:45 PM IST
+  workflow_dispatch:
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Chrome + Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y chromium-browser
+          pip install kiteconnect gspread google-auth pyotp selenium
+
+      - name: Run Option Chain Updater
+        env:
+          API_KEY: ${{ secrets.API_KEY }}
+          API_SECRET: ${{ secrets.API_SECRET }}
+          ZERODHA_USER_ID: ${{ secrets.ZERODHA_USER_ID }}
+          ZERODHA_PASSWORD: ${{ secrets.ZERODHA_PASSWORD }}
+          ZERODHA_TOTP_SECRET: ${{ secrets.ZERODHA_TOTP_SECRET }}
+          SHEET_ID: ${{ secrets.SHEET_ID }}
+          GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
+        run: python fetch_data.py
