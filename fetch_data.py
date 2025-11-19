@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python
 # -----------------------------
 # SENSEX Option Chain Live Update → Google Sheets
 # Works perfectly on GitHub Actions (Nov 2025)
