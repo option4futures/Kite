@@ -1,3 +1,7 @@
+pytz
+google-auth
 gspread
+pandas
+requests
 oauth2client
 kiteconnect
