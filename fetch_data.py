@@ -1,204 +1,198 @@
-#!/usr/bin/env python
-# -----------------------------
-# SENSEX Option Chain Live Update → Google Sheets
-# Works perfectly on GitHub Actions (Nov 2025)
-# -----------------------------
-
+#!/usr/bin/env python3
 import os
 import sys
-import json
 import pytz
-from datetime import datetime, time
-
 import gspread
-from google.oauth2.service_account import Credentials
+import traceback
+from oauth2client.service_account import ServiceAccountCredentials
 from kiteconnect import KiteConnect
-from gspread.exceptions import WorksheetNotFound
-
+from datetime import datetime, time
 
 # -----------------------------
 # 0. CONFIG
 # -----------------------------
 SHEET_ID = os.getenv("SHEET_ID")
-GOOGLE_CREDS_JSON = os.getenv("GOOGLE_CREDENTIALS")  # Full JSON string from secret
+GOOGLE_CREDS_PATH = os.getenv("GOOGLE_CREDENTIALS_PATH", "service_account.json")
 API_KEY = os.getenv("API_KEY")
 ACCESS_TOKEN = os.getenv("ACCESS_TOKEN")
 
-# Define SENSEX expiries → tab names
 EXPIRIES = [
-    ("2025-11-20", "SENSEX_Exp_1"),
-    # Add more as needed: ("2025-11-27", "SENSEX_Exp_2"), etc.
+    ("2025-11-20", "SENSEX_Exp_1")
+    
 ]
 
-
 # -----------------------------
-# 1. Market Open Check (IST)
+# 1. Market Open Check
 # -----------------------------
 ist = pytz.timezone("Asia/Kolkata")
 now = datetime.now(ist)
 current_time = now.time()
-current_weekday = now.weekday()  # 0=Mon, 5=Sat, 6=Sun
+market_open = time(9, 10)
+market_close = time(17, 30)
 
-market_open = time(9, 15)   # 9:15 AM IST
-market_close = time(17, 30) # 3:30 PM IST (BSE Equity close)
-
-if current_weekday >= 5 or not (market_open <= current_time <= market_close):
-    print(f"Market closed or weekend. Current: {now.strftime('%Y-%m-%d %H:%M:%S %Z')}")
+if not (market_open <= current_time <= market_close) or now.weekday() >= 5:
+    print("📉 Market is closed, exiting script.")
     sys.exit(0)
-
-print(f"Market is open. Time: {now.strftime('%H:%M:%S %Z')}")
-
+print(f"✅ Market is open. Time: {current_time}")
 
 # -----------------------------
 # 2. Setup KiteConnect
 # -----------------------------
 if not API_KEY or not ACCESS_TOKEN:
-    raise Exception("Missing API_KEY or ACCESS_TOKEN!")
+    raise Exception("❌ Missing API_KEY or ACCESS_TOKEN!")
 
 kite = KiteConnect(api_key=API_KEY)
 kite.set_access_token(ACCESS_TOKEN)
 
-
 # -----------------------------
-# 3. Setup Google Sheets (Modern google-auth)
+# 3. Setup Google Sheets
 # -----------------------------
-if not SHEET_ID:
-    raise Exception("Missing SHEET_ID!")
-if not GOOGLE_CREDS_JSON:
-    raise Exception("Missing GOOGLE_CREDENTIALS secret!")
+if not SHEET_ID or not os.path.exists(GOOGLE_CREDS_PATH):
+    raise Exception("❌ Missing Google Sheet ID or credentials file!")
 
-creds_dict = json.loads(GOOGLE_CREDS_JSON)
-
-scopes = [
-    "https://www.googleapis.com/auth/spreadsheets",
+scope = [
+    "https://spreadsheets.google.com/feeds",
     "https://www.googleapis.com/auth/drive"
 ]
-
-creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
+creds = ServiceAccountCredentials.from_json_keyfile_name(GOOGLE_CREDS_PATH, scope)
 client = gspread.authorize(creds)
-spreadsheet = client.open_by_key(SHEET_ID)
-
-print("Google Sheets connected successfully!")
-
 
 # -----------------------------
-# 4. Process Each Expiry
+# 4. Process each expiry
 # -----------------------------
+total_expiries = len(EXPIRIES)
+successful = 0
+failed = 0
+
 for expiry, sheet_name in EXPIRIES:
-    print(f"\nProcessing {expiry} → Tab: {sheet_name}")
+    start_time = datetime.now()
+    print(f"\n📌 Processing expiry {expiry} → Sheet {sheet_name}")
 
     try:
-        # Get or create worksheet
+        # Get sheet (open or create)
         try:
-            sheet = spreadsheet.worksheet(sheet_name)
-            print(f"Found existing tab: {sheet_name}")
-        except WorksheetNotFound:
-            sheet = spreadsheet.add_worksheet(title=sheet_name, rows=1000, cols=20)
-            print(f"Created new tab: {sheet_name}")
+            sheet = client.open_by_key(SHEET_ID).worksheet(sheet_name)
+        except gspread.exceptions.WorksheetNotFound:
+            sheet = client.open_by_key(SHEET_ID).add_worksheet(
+                title=sheet_name, rows=1000, cols=20
+            )
 
-        # Read previous OI to calculate change
+        # Load previous OI
+        existing_values = sheet.get_all_values()
         prev_oi_dict = {}
-        existing = sheet.get_all_values()
-        if len(existing) > 1:
-            headers = existing[0]
-            try:
-                strike_idx = headers.index("Strike")
-                call_oi_idx = headers.index("Call OI")
-                put_oi_idx = headers.index("Put OI")
-                for row in existing[1:]:
-                    if len(row) <= max(strike_idx, call_oi_idx, put_oi_idx):
-                        continue
+        if existing_values:
+            headers = existing_values[0]
+            if "Strike" in headers and "Call OI" in headers and "Put OI" in headers:
+                strike_col = headers.index("Strike")
+                call_oi_col = headers.index("Call OI")
+                put_oi_col = headers.index("Put OI")
+
+                for row in existing_values[1:]:
                     try:
-                        strike = float(row[strike_idx])
-                        call_oi = int(row[call_oi_idx] or 0)
-                        put_oi = int(row[put_oi_idx] or 0)
+                        strike = float(row[strike_col])
+                        call_oi = int(row[call_oi_col]) if row[call_oi_col] else 0
+                        put_oi = int(row[put_oi_col]) if row[put_oi_col] else 0
                         prev_oi_dict[strike] = {"call": call_oi, "put": put_oi}
                     except:
-                        continue
-            except ValueError:
-                pass  # Headers not found yet
+                        pass
 
-        # Fetch all SENSEX options for this expiry
+        # Fetch NIFTY instruments
         instruments = kite.instruments("BFO")
-        sensex_opts = [
+        nifty_options = [
             i for i in instruments
-            if i["name"] == "SENSEX" and i["expiry"].strftime("%Y-%m-%d") == expiry
+            if i.get("name") == "SENSEX" and i.get("expiry").strftime("%Y-%m-%d") == expiry
         ]
+        print(f"✅ Found {len(nifty_options)} contracts for {expiry}")
 
-        print(f"Found {len(sensex_opts)} contracts for {expiry}")
-
+        # Build option chain
         option_chain = {}
-        quotes = kite.quote([i["instrument_token"] for i in sensex_opts])
+        fetch_count = 0
+        fetch_errors = 0
 
-        for inst in sensex_opts:
-            token = str(inst["instrument_token"])
-            if token not in quotes:
-                continue
-            data = quotes[token]
+        for inst in nifty_options:
+            try:
+                fetch_count += 1
+                # Minimal log per instrument (only token + symbol)
+                # print("Fetching:", inst["tradingsymbol"], inst["instrument_token"])
 
-            strike = inst["strike"]
-            typ = inst["instrument_type"]  # CE or PE
+                quote = kite.quote(inst["instrument_token"])
 
-            if strike not in option_chain:
-                option_chain[strike] = {"call": {}, "put": {}}
+                ltp = quote[str(inst["instrument_token"])]["last_price"]
+                oi = quote[str(inst["instrument_token"])].get("oi", 0)
+                vol = quote[str(inst["instrument_token"])].get("volume", 0)
 
-            prev_oi = prev_oi_dict.get(strike, {"call": 0, "put": 0})
-            base = {
-                "ltp": data.get("last_price", 0),
-                "oi": data.get("oi", 0),
-                "vol": data.get("volume", 0),
-                "chg_oi": 0
-            }
+                strike = inst["strike"]
+                typ = inst["instrument_type"]
 
-            if typ == "CE":
-                base["chg_oi"] = base["oi"] - prev_oi["call"]
-                option_chain[strike]["call"] = base
-            elif typ == "PE":
-                base["chg_oi"] = base["oi"] - prev_oi["put"]
-                option_chain[strike]["put"] = base
+                if strike not in option_chain:
+                    option_chain[strike] = {"call": {}, "put": {}}
 
-        # Prepare rows for Google Sheets
-        header = [
+                if typ == "CE":
+                    prev_oi = prev_oi_dict.get(strike, {}).get("call", 0)
+                    option_chain[strike]["call"] = {
+                        "ltp": ltp, "oi": oi,
+                        "chg_oi": oi - prev_oi, "vol": vol
+                    }
+                elif typ == "PE":
+                    prev_oi = prev_oi_dict.get(strike, {}).get("put", 0)
+                    option_chain[strike]["put"] = {
+                        "ltp": ltp, "oi": oi,
+                        "chg_oi": oi - prev_oi, "vol": vol
+                    }
+
+            except Exception as e:
+                fetch_errors += 1
+                # Only print brief warning + traceback for troubleshooting
+                print(f"⚠️ Error fetching {inst.get('tradingsymbol')} (token {inst.get('instrument_token')}): {e}")
+                traceback.print_exc()
+
+        # Prepare rows
+        rows = []
+        for strike, data in sorted(option_chain.items()):
+            call = data.get("call", {})
+            put = data.get("put", {})
+            rows.append([
+                call.get("ltp", 0),
+                call.get("oi", 0),
+                call.get("chg_oi", 0),
+                call.get("vol", 0),
+                strike,
+                expiry,
+                put.get("ltp", 0),
+                put.get("oi", 0),
+                put.get("chg_oi", 0),
+                put.get("vol", 0),
+                ""
+            ])
+
+        # Write to sheet
+        headers_row = [
             "Call LTP", "Call OI", "Call Chg OI", "Call Vol",
             "Strike", "Expiry",
             "Put LTP", "Put OI", "Put Chg OI", "Put Vol",
-            "PCR (OI)", "Net Chg OI"
+            "VWAP"
         ]
 
-        rows = [header]
-
-        for strike in sorted(option_chain.keys()):
-            c = option_chain[strike]["call"]
-            p = option_chain[strike]["put"]
-
-            call_oi = c.get("oi", 0)
-            put_oi = p.get("oi", 0)
-            pcr = round(put_oi / call_oi, 2) if call_oi > 0 else 0
-            net_chg = (c.get("chg_oi", 0) or 0) - (p.get("chg_oi", 0) or 0)
-
-            row = [
-                c.get("ltp", ""),
-                call_oi,
-                c.get("chg_oi", ""),
-                c.get("vol", ""),
-                strike,
-                expiry,
-                p.get("ltp", ""),
-                put_oi,
-                p.get("chg_oi", ""),
-                p.get("vol", ""),
-                pcr,
-                net_chg
-            ]
-            rows.append(row)
-
-        # Write to sheet
         sheet.clear()
-        sheet.update("A1", rows)  # Fastest method
-        print(f"Updated {len(rows)-1} strikes in '{sheet_name}' | Time: {now.strftime('%H:%M:%S')}")
+        sheet.insert_row(headers_row, 1)
+        if rows:
+            sheet.insert_rows(rows, 2)
+
+        elapsed = (datetime.now() - start_time).total_seconds()
+        print(f"✅ Logged {len(rows)} rows in {sheet_name} (fetched {fetch_count}, errors {fetch_errors}) in {elapsed:.1f}s")
+        print(f"✅ Data fetched & updated successfully for expiry {expiry}")
+
+        successful += 1
 
     except Exception as e:
-        print(f"Error processing {expiry}: {e}")
-        raise
+        failed += 1
+        print(f"❌ Error processing {expiry}: {e}")
+        traceback.print_exc()
 
-print("\nAll expiries updated successfully!")
+# Final summary
+print("\n--- Summary ---")
+print(f"Expiries processed: {total_expiries}, successful: {successful}, failed: {failed}")
+if failed == 0:
+    print("🎉 All expiries updated successfully.")
+else:
+    print("⚠️ Some expiries failed. Check the logs above for details.")
