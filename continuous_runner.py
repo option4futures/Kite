@@ -1,23 +1,25 @@
 import time
+import subprocess
 from datetime import datetime
 import pytz
-import subprocess
 
 IST = pytz.timezone("Asia/Kolkata")
 
 def is_market_open():
     now = datetime.now(IST)
-    start = now.replace(hour=9, minute=10, second=0, microsecond=0)
-    end = now.replace(hour=15, minute=35, second=0, microsecond=0)
-    return start <= now <= end
+    return (
+        now.weekday() < 5 and
+        now.time() >= datetime.strptime("09:10", "%H:%M").time() and
+        now.time() <= datetime.strptime("15:35", "%H:%M").time()
+    )
 
 while True:
     if not is_market_open():
-        print("🛑 Market closed. Stopping program.")
+        print("🛑 Market is closed. Continuous runner stopping.")
         break
 
-    print("▶ Running fetch_data.py")
+    print("▶ Running fetch_data.py ...")
     subprocess.run(["python", "fetch_data.py"])
 
-    print("⏳ Waiting 60 seconds...")
+    print("⏳ Sleeping for 60 seconds...\n")
     time.sleep(60)
