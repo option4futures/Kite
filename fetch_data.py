@@ -8,7 +8,7 @@ from oauth2client.service_account import ServiceAccountCredentials
 from kiteconnect import KiteConnect
 from datetime import datetime, time
 
-# -----------------------------
+# ----------------------------
 # 0. CONFIG
 # -----------------------------
 SHEET_ID = os.getenv("SHEET_ID")
