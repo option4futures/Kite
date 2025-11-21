@@ -2,9 +2,7 @@ name: Update Kite Sensex R
 
 on:
   schedule:
-    - cron: "40-59 3 * * 1-5"   # 09:10–09:29 IST
-    - cron: "* 4-9 * * 1-5"     # 09:30–14:59 IST
-    - cron: "0-5 10 * * 1-5"    # 15:30–15:35 IST
+    - cron: "40 3 * * 1-5"   # 09:10 IST (03:40 UTC)
   workflow_dispatch:
   push:
     branches:
@@ -38,5 +36,6 @@ jobs:
         run: |
           echo '${{ secrets.GOOGLE_CREDENTIALS }}' > "$GOOGLE_CREDENTIALS_PATH"
 
-      - name: Run NIFTY Option Chain Updater
-        run: python fetch_data.py
+      - name: Run Continuous Market Updater (09:10–15:35 IST)
+        run: |
+          python continuous_runner.py
