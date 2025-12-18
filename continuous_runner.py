@@ -10,7 +10,7 @@ def is_market_open():
     return (
         now.weekday() < 5 and
         now.time() >= datetime.strptime("09:10", "%H:%M").time() and
-        now.time() <= datetime.strptime("15:35", "%H:%M").time()
+        now.time() <= datetime.strptime("19:35", "%H:%M").time()
     )
 
 while True:
