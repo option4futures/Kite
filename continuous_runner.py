@@ -9,7 +9,7 @@ def is_market_open():
     now = datetime.now(IST)
     return (
         now.weekday() < 5 and
-        now.time() >= datetime.strptime("09:10", "%H:%M").time() and
+        now.time() >= datetime.strptime("09:07", "%H:%M").time() and
         now.time() <= datetime.strptime("15:35", "%H:%M").time()
     )
 
