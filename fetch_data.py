@@ -17,7 +17,7 @@ API_KEY = os.getenv("API_KEY")
 ACCESS_TOKEN = os.getenv("ACCESS_TOKEN")
 
 EXPIRIES = [
-    ("2026-01-15", "SENSEX_Exp_1")
+    ("2026-01-14", "SENSEX_Exp_1")
 ]
 
 # -----------------------------
